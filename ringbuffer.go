@@ -42,7 +42,7 @@ func (rb *RingBuffer) Push(data []byte) int {
 	m1 := min(dataLen, rb.LeftSpace())
 	m2 := min(m1, rb.maxsize-(rb.in&(rb.maxsize-1)))
 	copy(rb.buffer[(rb.in&(rb.maxsize-1)):], data[:m2])
-	copy(rb.buffer, data[m2:])
+	copy(rb.buffer, data[m2:m1])
 	rb.in += m1
 	return int(m1)
 }

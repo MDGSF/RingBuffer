@@ -1,16 +1,10 @@
 package ringbuffer
 
 import (
-	"fmt"
+	"math"
 	"testing"
+	"time"
 )
-
-func init() {
-	fmt.Printf("a = %d\n", 'a')
-	fmt.Printf("b = %d\n", 'b')
-	fmt.Printf("c = %d\n", 'c')
-	fmt.Printf("d = %d\n", 'd')
-}
 
 func testBasic(t *testing.T, rb *RingBuffer, expectLen uint32, expectLeftSpace uint32) {
 	if rb.Len() != expectLen {
@@ -100,5 +94,100 @@ func TestOverflow(t *testing.T) {
 		out2[2] != 'd' ||
 		out2[3] != 'x' {
 		t.Fatal(out2)
+	}
+}
+
+func TestInOutOverFlow1(t *testing.T) {
+	/*
+		0 1 2 3 ..... max-2, max-1, max
+	*/
+	rb := New(8)
+	rb.in = 1
+	rb.out = math.MaxUint32 - 1
+	testBasic(t, rb, 3, 5)
+
+	in := []byte{'a'}
+	ret := rb.Push(in)
+	if ret != 1 {
+		t.Fatal(ret)
+	}
+	testBasic(t, rb, 4, 4)
+
+	out := make([]byte, 5)
+	ret = rb.Get(out)
+	if ret != 4 {
+		t.Fatal(ret)
+	}
+	testBasic(t, rb, 0, 8)
+}
+
+func TestInOutOverFlow2(t *testing.T) {
+	rb := New(8)
+	rb.in = math.MaxUint32
+	rb.out = math.MaxUint32 - 1
+	testBasic(t, rb, 1, 7)
+
+	idx := rb.in % 8
+
+	in := []byte{'a'}
+	ret := rb.Push(in)
+	if ret != 1 {
+		t.Fatal(ret)
+	}
+	testBasic(t, rb, 2, 6)
+	if rb.buffer[idx] != 'a' {
+		t.Fatal(rb.buffer)
+	}
+	if rb.in != 0 {
+		t.Fatal(rb)
+	}
+}
+
+func TestCrossPush(t *testing.T) {
+	rb := New(4)
+	rb.in = 2
+	rb.out = 2
+	testBasic(t, rb, 0, 4)
+
+	in := []byte{'a', 'b', 'c', 'd', 'e'}
+	ret := rb.Push(in)
+	if ret != 4 {
+		t.Fatal(ret)
+	}
+	testBasic(t, rb, 4, 0)
+	if rb.buffer[0] != 'c' ||
+		rb.buffer[1] != 'd' ||
+		rb.buffer[2] != 'a' ||
+		rb.buffer[3] != 'b' {
+		t.Fatal(rb.buffer)
+	}
+	if rb.in != 6 {
+		t.Fatal(rb.in)
+	}
+}
+
+func TestProducerConsumer(t *testing.T) {
+	rb := New(1024)
+	data := []byte(string("huangjian"))
+	N := 10000
+	go func() {
+		for i := 0; i < N; {
+			if int(rb.LeftSpace()) > len(data) {
+				rb.Push(data)
+				i++
+			}
+			time.Sleep(time.Microsecond)
+		}
+	}()
+
+	time.Sleep(time.Second)
+
+	for i := 0; i < N; i++ {
+		out := make([]byte, len(data))
+		ret := rb.Get(out)
+		if string(out) != "huangjian" {
+			t.Fatal(i, ret, out)
+		}
+		time.Sleep(2 * time.Microsecond)
 	}
 }
